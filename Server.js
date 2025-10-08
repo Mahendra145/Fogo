@@ -22,7 +22,7 @@ const pool = new pg.Pool({
   // Recommended settings to prevent memory issues on free tiers
   max: 3,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 30000,
 });
 
 pool.on("error", (err, client) => {
@@ -276,4 +276,5 @@ app.get(/^(?!\/api|\/auth).*$/, (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
