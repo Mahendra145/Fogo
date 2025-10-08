@@ -167,14 +167,69 @@ app.get("/api/fogo/leaderboard", async (req, res) => {
   }
 });
 
-// Admin routes - left unchanged as they are for internal use
+// Admin routes
 app.get("/admin.html", (req, res) => {
   res.sendFile(path.join(__dirname, "Public", "admin.html"));
 });
-app.get("/api/admin/resolve-username", async (req, res) => { /* ... unchanged ... */ });
-app.post("/api/admin/tasks", async (req, res) => { /* ... unchanged ... */ });
-app.delete("/api/admin/tasks/:id", async (req, res) => { /* ... unchanged ... */ });
 
+app.get("/api/admin/resolve-username", async (req, res) => {
+  const key = req.headers["x-admin-key"];
+  if (key !== process.env.ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
+
+  const { username } = req.query;
+  if (!username) return res.status(400).json({ error: "Missing username" });
+
+  try {
+    const tokenRes = await pool.query("SELECT access_token FROM users LIMIT 1");
+    if (!tokenRes.rows[0]) return res.status(500).json({ error: "No access token available to perform this action" });
+
+    const token = tokenRes.rows[0].access_token;
+
+    const userRes = await fetch(`https://api.twitter.com/2/users/by/username/${username}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const data = await userRes.json();
+    if (data.data?.id) return res.json({ id: data.data.id });
+    return res.status(404).json({ error: "Username not found on X" });
+  } catch (err) {
+    console.error("❌ Resolve username error:", err);
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
+app.post("/api/admin/tasks", async (req, res) => {
+  const key = req.headers["x-admin-key"];
+  if (key !== process.env.ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
+
+  const { name, type, points, href, tweet_id, target_user_id } = req.body;
+
+  try {
+    console.log("-> Attempting to insert task into DB...");
+    const dbRes = await pool.query(
+      `INSERT INTO tasks (name, type, points, href, tweet_id, target_user_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [name, type, points, href || null, tweet_id || null, target_user_id || null]
+    );
+    console.log("-> DB insert successful!");
+    res.json({ task: dbRes.rows[0] });
+  } catch (err) {
+    console.error("❌ Admin create task error:", err);
+    res.status(500).json({ error: "DB error" });
+  }
+});
+
+app.delete("/api/admin/tasks/:id", async (req, res) => {
+  const key = req.headers["x-admin-key"];
+  if (key !== process.env.ADMIN_KEY) return res.status(401).json({ error: "Unauthorized" });
+
+  try {
+    await pool.query("DELETE FROM tasks WHERE id=$1", [req.params.id]);
+    res.json({ message: "Task deleted" });
+  } catch (err) {
+    console.error("❌ Admin delete task error:", err);
+    res.status(500).json({ error: "DB error" });
+  }
+});
 app.get("/api/fogo/tasks", async (req, res) => {
   const { x_user_id } = req.query;
   try {
@@ -276,6 +331,7 @@ app.get(/^(?!\/api|\/auth).*$/, (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
 
 
