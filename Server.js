@@ -19,6 +19,10 @@ console.log("🔌 Connecting to NeonDB...");
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
+  // Recommended settings to prevent memory issues on free tiers
+  max: 3,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
 });
 
 pool.on("error", (err, client) => {
@@ -62,10 +66,9 @@ app.get("/auth/login", (req, res) => {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.X_CLIENT_ID,
-    // CHANGED: Assumes your new app URL is fogo.onrender.com. Update if different.
     redirect_uri: "https://fogo.onrender.com/auth/x/callback", 
     scope: "tweet.read users.read follows.read like.read offline.access",
-    state: "fogo123", // CHANGED: State parameter updated for Fogo
+    state: "fogo123",
     code_challenge: "challenge",
     code_challenge_method: "plain"
   });
@@ -99,7 +102,6 @@ app.get("/auth/x/callback", async (req, res) => {
       body: new URLSearchParams({
         code,
         grant_type: "authorization_code",
-        // CHANGED: Must match the redirect_uri from the login step
         redirect_uri: "https://fogo.onrender.com/auth/x/callback", 
         code_verifier: "challenge"
       }),
@@ -143,7 +145,6 @@ app.get("/auth/x/callback", async (req, res) => {
 });
 
 // === API ROUTES ===
- API path  /api/fogo/me
 app.get("/api/fogo/me", async (req, res) => {
   console.log("📡 /api/fogo/me query:", req.query);
   try {
@@ -155,7 +156,6 @@ app.get("/api/fogo/me", async (req, res) => {
   }
 });
 
-// API path /api/fogo/leaderboard
 app.get("/api/fogo/leaderboard", async (req, res) => {
   console.log("📡 /api/fogo/leaderboard called");
   try {
@@ -167,17 +167,14 @@ app.get("/api/fogo/leaderboard", async (req, res) => {
   }
 });
 
-// Serve admin page
+// Admin routes - left unchanged as they are for internal use
 app.get("/admin.html", (req, res) => {
   res.sendFile(path.join(__dirname, "Public", "admin.html"));
 });
-
-// Admin routes (no name changes needed here unless you want them)
 app.get("/api/admin/resolve-username", async (req, res) => { /* ... unchanged ... */ });
 app.post("/api/admin/tasks", async (req, res) => { /* ... unchanged ... */ });
 app.delete("/api/admin/tasks/:id", async (req, res) => { /* ... unchanged ... */ });
 
-// CHANGED: API path from /api/spiceflow/tasks to /api/fogo/tasks
 app.get("/api/fogo/tasks", async (req, res) => {
   const { x_user_id } = req.query;
   try {
@@ -202,7 +199,6 @@ app.get("/api/fogo/tasks", async (req, res) => {
   }
 });
 
-//  API path  /api/fogo/claim
 app.post("/api/fogo/claim", async (req, res) => {
   const { x_user_id, taskId } = req.body;
   if (!x_user_id || !taskId) return res.status(400).json({ error: "Missing x_user_id or taskId" });
@@ -227,22 +223,32 @@ app.post("/api/fogo/claim", async (req, res) => {
     }
 
     let verified = false;
-
-    // --- All verification logic remains unchanged ---
-    if (task.type === "link.task") {
-      verified = true;
-    } else if (task.type === "social.follow") {
-      // ... verification logic ...
-    } // ... and so on for all other task types
     
-    // Paste your existing verification logic here, it does not need to change
-    if (task.type === "link.task") { verified = true; } 
-    else if (task.type === "social.follow") { const followRes = await fetch(`https://api.twitter.com/2/users/${x_user_id}/following`, { headers: { Authorization: `Bearer ${token}` } }); const followData = await followRes.json(); verified = followData.data?.some(u => String(u.id) === String(task.target_user_id)); }
-    else if (task.type === "social.like") { const likeRes = await fetch(`https://api.twitter.com/2/users/${x_user_id}/liked_tweets`, { headers: { Authorization: `Bearer ${token}` } }); const likeData = await likeRes.json(); verified = likeData.data?.some(t => String(t.id) === String(task.tweet_id)); }
-    else if (task.type === "social.retweet") { const rtRes = await fetch(`https://api.twitter.com/2/tweets/${task.tweet_id}/retweeted_by`, { headers: { Authorization: `Bearer ${token}` } }); const rtData = await rtRes.json(); verified = rtData.data?.some(u => String(u.id) === String(x_user_id)); }
-    else if (task.type === "social.reply") { if (!user.username) { return res.status(400).json({ error: "Username not stored" }); } const replyRes = await fetch(`https://api.twitter.com/2/tweets/search/recent?query=from:${user.username} conversation_id:${task.tweet_id}`, { headers: { Authorization: `Bearer ${token}` } }); const replyData = await replyRes.json(); verified = replyData.meta?.result_count > 0; }
-    else { return res.status(400).json({ error: "Unknown task type" }); }
-    // --- End of verification logic ---
+    // FIX: Removed the duplicate verification logic block
+    if (task.type === "link.task") { 
+        verified = true; 
+    } else if (task.type === "social.follow") { 
+        const followRes = await fetch(`https://api.twitter.com/2/users/${x_user_id}/following`, { headers: { Authorization: `Bearer ${token}` } }); 
+        const followData = await followRes.json(); 
+        verified = followData.data?.some(u => String(u.id) === String(task.target_user_id)); 
+    } else if (task.type === "social.like") { 
+        const likeRes = await fetch(`https://api.twitter.com/2/users/${x_user_id}/liked_tweets`, { headers: { Authorization: `Bearer ${token}` } }); 
+        const likeData = await likeRes.json(); 
+        verified = likeData.data?.some(t => String(t.id) === String(task.tweet_id)); 
+    } else if (task.type === "social.retweet") { 
+        const rtRes = await fetch(`https://api.twitter.com/2/tweets/${task.tweet_id}/retweeted_by`, { headers: { Authorization: `Bearer ${token}` } }); 
+        const rtData = await rtRes.json(); 
+        verified = rtData.data?.some(u => String(u.id) === String(x_user_id)); 
+    } else if (task.type === "social.reply") { 
+        if (!user.username) { 
+            return res.status(400).json({ error: "Username not stored" }); 
+        } 
+        const replyRes = await fetch(`https://api.twitter.com/2/tweets/search/recent?query=from:${user.username} conversation_id:${task.tweet_id}`, { headers: { Authorization: `Bearer ${token}` } }); 
+        const replyData = await replyRes.json(); 
+        verified = replyData.meta?.result_count > 0; 
+    } else { 
+        return res.status(400).json({ error: "Unknown task type" }); 
+    }
 
     if (!verified) {
       return res.status(400).json({ error: "Verification failed. Complete the task on X first." });
@@ -264,8 +270,6 @@ app.post("/api/fogo/claim", async (req, res) => {
 // === FRONTEND FALLBACK (must be last) ===
 app.get(/^(?!\/api|\/auth).*$/, (req, res) => {
   console.log("📄 Serving frontend for", req.url);
-  // I noticed your old code redirected to index0.html, I changed it to index.html
-  // as that's the file we've been working on. Change it back if needed.
   res.sendFile(path.join(__dirname, "Public", "index.html"));
 });
 
