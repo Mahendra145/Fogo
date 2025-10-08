@@ -14,49 +14,48 @@
     }
     header { background: #ff5722; padding: 1rem; font-size: 1.5rem; font-weight: bold; }
     .container { max-width: 700px; margin: 2rem auto; padding: 1rem; }
-    .card { background: #1e1e30; margin: 1rem 0; padding: 1rem; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
-    input, select { padding: 8px; margin: 5px; width: 80%; border-radius: 5px; border: none; }
-    button { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    .card { background: #1e1e30; margin: 1rem 0; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); text-align: left; }
+    input, select, button { display: block; width: 100%; box-sizing: border-box; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: none; font-size: 1rem; }
+    button { cursor: pointer; font-weight: bold; }
     .btn-admin { background: #ff5722; color: white; }
-    .btn-delete { background: #d32f2f; color: white; padding: 4px 8px; margin-left: 5px; border-radius: 3px; }
+    .btn-delete { background: #d32f2f; color: white; padding: 4px 8px; margin-left: 10px; border-radius: 3px; display: inline-block; width: auto; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { padding: 8px; border-bottom: 1px solid #333; }
+    h3 { text-align: center; margin-top: 0; }
+    .task-entry { padding: 10px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+    .task-entry:last-child { border-bottom: none; }
   </style>
 </head>
 <body>
-  <header>Fogo Admin Panel </header>
+  <header>Fogo Admin Panel</header>
   <div class="container">
 
-    <!-- Admin Key -->
     <div class="card">
       <h3>Enter Admin Key</h3>
       <input id="adminKey" type="password" placeholder="Admin Key" />
       <button id="loginAdmin" class="btn-admin">Unlock</button>
     </div>
 
-    <!-- Task Manager -->
     <div id="taskManager" class="card" style="display:none;">
       <h3>Create New Task</h3>
-      <input id="taskName" placeholder="Task Name" />
+      <input id="taskName" placeholder="Task Name (e.g., 'Like our latest post')" />
       <select id="taskType">
-        <option value="social.like">Like</option>
-        <option value="social.retweet">Retweet</option>
-        <option value="social.reply">Reply</option>
+        <option value="social.like">X: Like</option>
+        <option value="social.retweet">X: Retweet</option>
+        <option value="social.reply">X: Reply</option>
         <option value="special">Follow (Special)</option>
         <option value="link.task">Link Task (Instant Claim)</option>
       </select>
       <input id="taskPoints" placeholder="Points" type="number" value="100" />
-      <input id="taskHref" placeholder="Task Link (Tweet/Profile URL)" />
+      <input id="taskHref" placeholder="Task URL (e.g., Tweet or Profile Link)" />
       <button id="createTask" class="btn-admin">Create Task</button>
     </div>
 
-    <!-- Task List -->
     <div id="tasks" class="card" style="display:none;">
       <h3>Current Tasks</h3>
       <div id="taskList"></div>
     </div>
 
-    <!-- Leaderboard -->
     <div id="leaderboard" class="card" style="display:none;">
       <h3>Leaderboard</h3>
       <div id="lbContent"></div>
@@ -68,44 +67,44 @@
     const API_BASE = "";
     let ADMIN_KEY = null;
 
-    // 🔹 Extract tweet ID from URL
     function extractTweetId(url) {
       const match = url.match(/status\/(\d+)/);
       return match ? match[1] : null;
     }
 
-    // 🔹 Extract username from profile URL
     function extractUsername(url) {
-      const match = url.match(/x\.com\/([^\/?]+)/);
+      const match = url.match(/(?:twitter|x)\.com\/([a-zA-Z0-9_]+)/);
       return match ? match[1] : null;
     }
 
-    // 🔹 Call backend API
     async function api(path, opts={}) {
       try {
         const res = await fetch(API_BASE + path, {
           headers: { "Content-Type":"application/json", "x-admin-key": ADMIN_KEY || "" },
           ...opts
         });
-        if(!res.ok) throw new Error("HTTP " + res.status);
+        if(!res.ok) {
+            const errorData = await res.json();
+            throw new Error(`HTTP ${res.status}: ${errorData.error || 'Unknown error'}`);
+        }
         return await res.json();
       } catch(err) {
         console.error("API Error:", err);
+        alert(`API Error: ${err.message}`);
         return null;
       }
     }
 
-    // 🔹 Convert username → user_id using backend proxy
     async function fetchUserIdFromUsername(username) {
       const res = await api(`/api/admin/resolve-username?username=${username}`);
       if (res && res.id) return res.id;
       throw new Error("Could not resolve username: " + username);
     }
 
-    // 🔹 Admin login
     document.getElementById("loginAdmin").onclick = () => {
       ADMIN_KEY = document.getElementById("adminKey").value.trim();
       if (!ADMIN_KEY) return alert("Enter the Admin Key");
+      document.getElementById("loginAdmin").parentElement.style.display = 'none';
       document.getElementById("taskManager").style.display="block";
       document.getElementById("tasks").style.display="block";
       document.getElementById("leaderboard").style.display="block";
@@ -113,94 +112,97 @@
       loadLeaderboard();
     };
 
-  document.getElementById("createTask").onclick = async () => {
-  const typeSelect = document.getElementById("taskType").value;
-  
-  // Map task type
-  let taskType = typeSelect;
-  if (typeSelect === "special") taskType = "social.follow"; // old follow task
-  if (typeSelect === "link.task") taskType = "link.task";    // new instant claim link task
+    document.getElementById("createTask").onclick = async () => {
+      const typeSelect = document.getElementById("taskType").value;
+      const taskHref = document.getElementById("taskHref").value.trim();
+      
+      // REVERTED: Kept your original logic for handling the "special" task type
+      let taskType = typeSelect;
+      if (typeSelect === "special") {
+        taskType = "social.follow";
+      }
 
-  let taskHref = document.getElementById("taskHref").value.trim();
+      const payload = {
+        name: document.getElementById("taskName").value.trim(),
+        type: taskType,
+        points: Number(document.getElementById("taskPoints").value),
+        href: taskHref
+      };
 
-  const payload = {
-    name: document.getElementById("taskName").value.trim(),
-    type: taskType,
-    points: Number(document.getElementById("taskPoints").value),
-    href: taskHref
-  };
+      if (!payload.name || !payload.href || !payload.points) {
+          return alert("Please fill in all task fields.");
+      }
+      
+      try {
+        if (taskType === "social.like" || taskType === "social.retweet" || taskType === "social.reply") {
+          payload.tweet_id = extractTweetId(taskHref);
+          if (!payload.tweet_id) return alert("Invalid Tweet URL provided.");
+        } else if (taskType === "social.follow") {
+          const username = extractUsername(taskHref);
+          if (!username) return alert("Invalid Profile URL provided.");
+          payload.target_user_id = await fetchUserIdFromUsername(username);
+        }
 
-  // Old verification tasks
-  if (taskType === "social.like" || taskType === "social.retweet" || taskType === "social.reply") {
-    payload.tweet_id = extractTweetId(taskHref);
-    if (!payload.tweet_id) return alert("Invalid tweet URL");
+        const res = await api("/api/admin/tasks", { method:"POST", body: JSON.stringify(payload) });
+        if(res && res.task){
+          alert("Task created successfully!");
+          document.getElementById("taskName").value="";
+          document.getElementById("taskHref").value="";
+          loadTasks();
+        }
+      } catch (err) {
+        alert(`Failed to create task: ${err.message}`);
+      }
+    };
 
-  } else if (taskType === "social.follow") {
-    const username = extractUsername(taskHref);
-    if (!username) return alert("Invalid profile URL");
-
-    try {
-      payload.target_user_id = await fetchUserIdFromUsername(username);
-    } catch (err) {
-      return alert("Failed to resolve username → user_id");
-    }
-  }
-
-  // Link Task (instant claim) needs no tweet/profile extraction
-
-  // Send to backend
-  const res = await api("/api/admin/tasks", { method:"POST", body: JSON.stringify(payload) });
-  if(res && res.task){
-    alert("Task created!");
-    document.getElementById("taskName").value="";
-    document.getElementById("taskHref").value="";
-    loadTasks();
-  } else {
-    alert("Failed to create task. Check console for details.");
-  }
-};
-
-
-
-    
-    // 🔹 Load tasks
     async function loadTasks() {
-      const list = await api("/api/spiceflow/tasks");
+      // FIXED: API path updated to make the function work
+      const list = await api("/api/fogo/tasks");
       const div = document.getElementById("taskList");
       div.innerHTML = "";
       if(Array.isArray(list)){
+        if (list.length === 0) {
+            div.innerHTML = "<p style='text-align: center; color: #9ca3af;'>No tasks created yet.</p>";
+            return;
+        }
         list.forEach(t => {
           const el = document.createElement("div");
+          el.className = 'task-entry';
           el.innerHTML = `
-            <p><b>${t.name}</b> (${t.type}) • ${t.points} pts
-            ${t.href ? `→ <a href="${t.href}" target="_blank">Open</a>` : ""}
-            <button class="btn-delete" onclick="deleteTask(${t.id})">Delete</button></p>`;
+            <span><b>${t.name}</b> (${t.type}) • ${t.points} pts</span>
+            <span>
+              ${t.href ? `<a href="${t.href}" target="_blank">Link</a>` : ""}
+              <button class="btn-delete" onclick="deleteTask(${t.id})">Delete</button>
+            </span>`;
           div.appendChild(el);
         });
-      } else div.innerHTML = "<p>No tasks loaded.</p>";
+      } else {
+        div.innerHTML = "<p>Error loading tasks.</p>";
+      }
     }
 
-    // 🔹 Delete task
     async function deleteTask(id){
-      if(!confirm("Are you sure?")) return;
+      if(!confirm("Are you sure you want to delete this task?")) return;
       const res = await api("/api/admin/tasks/" + id, { method:"DELETE" });
-      if(res && res.message) { alert("Task deleted!"); loadTasks(); }
-      else alert("Failed to delete task.");
+      if(res && res.message) { 
+          alert("Task deleted!"); 
+          loadTasks(); 
+      }
     }
 
-    // 🔹 Load leaderboard
     async function loadLeaderboard() {
-      const data = await api("/api/spiceflow/leaderboard");
+      // FIXED: API path updated to make the function work
+      const data = await api("/api/fogo/leaderboard");
       const div = document.getElementById("lbContent");
       if(Array.isArray(data)){
         let html = "<table><tr><th>User</th><th>Points</th></tr>";
         data.forEach(u => { html += `<tr><td>${u.username}</td><td>${u.points}</td></tr>`; });
         html += "</table>";
         div.innerHTML = html;
-      } else div.innerHTML = "<p>No leaderboard data.</p>";
+      } else {
+        div.innerHTML = "<p>No leaderboard data.</p>";
+      }
     }
   </script>
 </body>
 </html>
-
-
