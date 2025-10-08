@@ -277,6 +277,12 @@ app.post("/api/fogo/claim", async (req, res) => {
       return res.status(400).json({ error: "Task already claimed" });
     }
 
+    console.log("🔹 Verifying task:");
+    console.log("Task type:", task.type);
+    console.log("Task tweet_id:", task.tweet_id);
+    console.log("Task target_user_id:", task.target_user_id);
+    console.log("User x_user_id:", x_user_id);
+    
     let verified = false;
     
     // FIX: Removed the duplicate verification logic block
@@ -331,6 +337,7 @@ app.get(/^(?!\/api|\/auth).*$/, (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
 
 
