@@ -19,7 +19,6 @@ console.log("🔌 Connecting to NeonDB...");
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  // Recommended settings to prevent memory issues on free tiers
   max: 3,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 30000,
@@ -59,7 +58,6 @@ app.use((req, res, next) => {
 });
 
 // === AUTH ROUTES ===
-
 app.get("/auth/login", (req, res) => {
   console.log("📡 /auth/login hit");
 
@@ -167,7 +165,7 @@ app.get("/api/fogo/leaderboard", async (req, res) => {
   }
 });
 
-// Admin routes
+// === ADMIN ROUTES ===
 app.get("/admin.html", (req, res) => {
   res.sendFile(path.join(__dirname, "Public", "admin.html"));
 });
@@ -230,6 +228,7 @@ app.delete("/api/admin/tasks/:id", async (req, res) => {
     res.status(500).json({ error: "DB error" });
   }
 });
+
 app.get("/api/fogo/tasks", async (req, res) => {
   const { x_user_id } = req.query;
   try {
@@ -254,6 +253,7 @@ app.get("/api/fogo/tasks", async (req, res) => {
   }
 });
 
+// === CLAIM ROUTE WITH DEBUGGING ===
 app.post("/api/fogo/claim", async (req, res) => {
   const { x_user_id, taskId } = req.body;
   if (!x_user_id || !taskId) return res.status(400).json({ error: "Missing x_user_id or taskId" });
@@ -277,34 +277,61 @@ app.post("/api/fogo/claim", async (req, res) => {
       return res.status(400).json({ error: "Task already claimed" });
     }
 
-    console.log("🔹 Verifying task:");
-    console.log("Task type:", task.type);
-    console.log("Task tweet_id:", task.tweet_id);
-    console.log("Task target_user_id:", task.target_user_id);
-    console.log("User x_user_id:", x_user_id);
+    console.log("🔹 Verifying task:", task.type);
     
     let verified = false;
     
-    // FIX: Removed the duplicate verification logic block
     if (task.type === "link.task") { 
         verified = true; 
     } else if (task.type === "social.follow") { 
+        console.log("✅ Checking if user follows target...");
         const followRes = await fetch(`https://api.twitter.com/2/users/${x_user_id}/following`, { headers: { Authorization: `Bearer ${token}` } }); 
+        
+        if (!followRes.ok) {
+            console.error("❌ X API Error (Follow):", followRes.status, followRes.statusText);
+            const errorBody = await followRes.text();
+            console.error("❌ X API Error Body:", errorBody);
+        }
+
         const followData = await followRes.json(); 
         verified = followData.data?.some(u => String(u.id) === String(task.target_user_id)); 
     } else if (task.type === "social.like") { 
+        console.log("✅ Checking if user liked tweet...");
         const likeRes = await fetch(`https://api.twitter.com/2/users/${x_user_id}/liked_tweets`, { headers: { Authorization: `Bearer ${token}` } }); 
+        
+        if (!likeRes.ok) {
+            console.error("❌ X API Error (Like):", likeRes.status, likeRes.statusText);
+            const errorBody = await likeRes.text();
+            console.error("❌ X API Error Body:", errorBody);
+        }
+
         const likeData = await likeRes.json(); 
         verified = likeData.data?.some(t => String(t.id) === String(task.tweet_id)); 
     } else if (task.type === "social.retweet") { 
+        console.log("✅ Checking if user retweeted...");
         const rtRes = await fetch(`https://api.twitter.com/2/tweets/${task.tweet_id}/retweeted_by`, { headers: { Authorization: `Bearer ${token}` } }); 
+        
+        if (!rtRes.ok) {
+            console.error("❌ X API Error (Retweet):", rtRes.status, rtRes.statusText);
+            const errorBody = await rtRes.text();
+            console.error("❌ X API Error Body:", errorBody);
+        }
+
         const rtData = await rtRes.json(); 
         verified = rtData.data?.some(u => String(u.id) === String(x_user_id)); 
     } else if (task.type === "social.reply") { 
+        console.log("✅ Checking if user replied...");
         if (!user.username) { 
             return res.status(400).json({ error: "Username not stored" }); 
         } 
         const replyRes = await fetch(`https://api.twitter.com/2/tweets/search/recent?query=from:${user.username} conversation_id:${task.tweet_id}`, { headers: { Authorization: `Bearer ${token}` } }); 
+        
+        if (!replyRes.ok) {
+            console.error("❌ X API Error (Reply):", replyRes.status, replyRes.statusText);
+            const errorBody = await replyRes.text();
+            console.error("❌ X API Error Body:", errorBody);
+        }
+
         const replyData = await replyRes.json(); 
         verified = replyData.meta?.result_count > 0; 
     } else { 
@@ -337,8 +364,3 @@ app.get(/^(?!\/api|\/auth).*$/, (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
-
-
-
-
-
