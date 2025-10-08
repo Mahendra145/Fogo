@@ -66,7 +66,7 @@ app.get("/auth/login", (req, res) => {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: process.env.X_CLIENT_ID,
-    redirect_uri: "https://fogo-q8hm.onrender.com/auth/x/callback", 
+    redirect_uri: "https://fogo-1ubw.onrender.com/auth/x/callback", 
     scope: "tweet.read users.read follows.read like.read offline.access",
     state: "fogo123",
     code_challenge: "challenge",
@@ -102,7 +102,7 @@ app.get("/auth/x/callback", async (req, res) => {
       body: new URLSearchParams({
         code,
         grant_type: "authorization_code",
-        redirect_uri: "https://fogo-q8hm.onrender.com/auth/x/callback", 
+        redirect_uri: "https://fogo-1ubw.onrender.com/auth/x/callback", 
         code_verifier: "challenge"
       }),
     });
@@ -276,5 +276,6 @@ app.get(/^(?!\/api|\/auth).*$/, (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
 
